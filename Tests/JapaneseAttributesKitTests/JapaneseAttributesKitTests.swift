@@ -91,4 +91,53 @@ final class JapaneseAttributesKitTests: XCTestCase {
 
         XCTAssertEqual(expected.count, 0)
     }
+
+    func test_codable() throws {
+        struct Container: Codable {
+            var string: AttributedString
+
+            init() throws {
+                string = try AttributedString(markdown: "abcdefg^[hij](ruby: 'HIJ')klmn", including: \.japanese)
+                string.verticalGlyph = true
+            }
+
+            enum CodingKeys: CodingKey {
+                case string
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                string = try container.decode(AttributedString.self, forKey: .string, configuration: AttributeScopes.JapaneseAttributes.self)
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(string, forKey: .string, configuration: AttributeScopes.JapaneseAttributes.self)
+            }
+        }
+
+        let container = try Container()
+        let data = try JSONEncoder().encode(container)
+
+        let decoded = try JSONDecoder().decode(Container.self, from: data)
+        XCTAssertEqual(decoded.string.verticalGlyph, true)
+        XCTAssertEqual(String(decoded.string.characters), "abcdefghijklmn")
+        XCTAssertEqual(decoded.string.runs.count, 3)
+        for (index, run) in decoded.string.runs.enumerated() {
+            let substring = decoded.string[run.range]
+
+            switch index {
+            case 0, 2:
+                XCTAssertEqual(String(substring.characters), index == 0 ? "abcdefg" : "klmn")
+                XCTAssertNil(substring.ruby)
+
+            case 1:
+                XCTAssertEqual(String(substring.characters), "hij")
+                XCTAssertEqual(substring.ruby?.text, .default("HIJ"))
+
+            default:
+                XCTFail()
+            }
+        }
+    }
 }
